@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Emme Gastos</title>
+    <link rel="preconnect" href="https://docs.google.com">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Control de trabajos</p>
+        <h1>Emme Gastos</h1>
+      </div>
+      <div class="header-actions">
+        <button class="icon-button" id="refreshButton" type="button" aria-label="Actualizar datos" title="Actualizar datos">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+        <a class="sheet-link" href="https://docs.google.com/spreadsheets/d/1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4/edit?usp=sharing" target="_blank" rel="noreferrer">
+          <i data-lucide="external-link"></i>
+          Abrir planilla
+        </a>
+      </div>
+    </header>
+
+    <main>
+      <section class="status-band" aria-live="polite">
+        <div>
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Cargando datos...</span>
+        </div>
+        <div id="sheetMeta"></div>
+      </section>
+
+      <section class="filters" aria-label="Filtros">
+        <label>
+          Mes
+          <select id="monthFilter"></select>
+        </label>
+        <label>
+          Categoria
+          <select id="categoryFilter"></select>
+        </label>
+        <label>
+          Metodo
+          <select id="methodFilter"></select>
+        </label>
+        <label class="search-field">
+          Buscar
+          <input id="searchFilter" type="search" placeholder="Descripcion u observacion">
+        </label>
+      </section>
+
+      <section class="entry-layout">
+        <form class="entry-panel" id="entryForm">
+          <div class="panel-heading">
+            <h2>Cargar trabajo</h2>
+            <span id="entryStatus">Listo para guardar</span>
+          </div>
+          <div class="entry-grid">
+            <label>
+              Fecha
+              <input id="entryDate" name="date" type="date" required>
+            </label>
+            <label>
+              Categoria
+              <input id="entryCategory" name="category" list="categoryOptions" placeholder="Uñas" required>
+              <datalist id="categoryOptions"></datalist>
+            </label>
+            <label class="wide-field">
+              Descripcion
+              <input id="entryDescription" name="description" placeholder="Kapping" required>
+            </label>
+            <label>
+              Monto
+              <input id="entryAmount" name="amount" type="number" min="0" step="1" placeholder="10000" required>
+            </label>
+            <label>
+              Metodo
+              <select id="entryMethod" name="method" required>
+                <option value="Transferencia">Transferencia</option>
+                <option value="Efectivo">Efectivo</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </label>
+            <label class="wide-field">
+              Observaciones
+              <textarea id="entryNotes" name="notes" rows="2" placeholder="Opcional"></textarea>
+            </label>
+          </div>
+          <button class="primary-button" id="saveEntryButton" type="submit">
+            <i data-lucide="save"></i>
+            Guardar en la hoja
+          </button>
+        </form>
+      </section>
+
+      <iframe class="hidden-frame" id="writeFrame" name="writeFrame" title="Carga de datos"></iframe>
+
+      <section class="kpi-grid" aria-label="Resumen">
+        <article class="kpi">
+          <span>Ingresos</span>
+          <strong id="totalRevenue">$0</strong>
+        </article>
+        <article class="kpi">
+          <span>Trabajos</span>
+          <strong id="jobCount">0</strong>
+        </article>
+        <article class="kpi">
+          <span>Ticket promedio</span>
+          <strong id="avgTicket">$0</strong>
+        </article>
+        <article class="kpi">
+          <span>Efectivo</span>
+          <strong id="cashTotal">$0</strong>
+        </article>
+        <article class="kpi">
+          <span>Transferencia</span>
+          <strong id="transferTotal">$0</strong>
+        </article>
+      </section>
+
+      <section class="insights-layout">
+        <div class="panel">
+          <div class="panel-heading">
+            <h2>Por categoria</h2>
+            <span id="categoryTotal"></span>
+          </div>
+          <div class="bar-list" id="categoryChart"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-heading">
+            <h2>Ingresos por dia</h2>
+            <span id="dailyTotal"></span>
+          </div>
+          <div class="daily-chart" id="dailyChart"></div>
+        </div>
+      </section>
+
+      <section class="table-section">
+        <div class="panel-heading table-heading">
+          <h2>Movimientos</h2>
+          <span id="visibleRows"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Hoja</th>
+                <th>Categoria</th>
+                <th>Descripcion</th>
+                <th>Metodo</th>
+                <th class="amount-cell">Monto</th>
+                <th>Observaciones</th>
+              </tr>
+            </thead>
+            <tbody id="rowsTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
