@@ -916,11 +916,13 @@ function titleCase(value) {
 }
 
 function formatMoney(value, digits = 0) {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
+  const amount = Number(value) || 0;
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(value || 0);
+  }).format(amount);
+
+  return `$${formatted}`;
 }
 
 function formatDateTime(date) {
