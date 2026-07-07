@@ -140,6 +140,15 @@ h2 {
   opacity: 0.55;
 }
 
+.hidden-control {
+  display: none;
+}
+
+.hidden-control.visible {
+  display: inline-flex;
+  margin-top: 10px;
+}
+
 .icon-button svg,
 .sheet-link svg,
 .primary-button svg,
@@ -425,7 +434,7 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-.daily-chart {
+.monthly-chart {
   display: flex;
   align-items: end;
   gap: 6px;
@@ -437,23 +446,23 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
-.day-bar {
+.month-bar {
   position: relative;
   flex: 1 1 12px;
-  min-width: 8px;
+  min-width: 44px;
   border-radius: 6px 6px 0 0;
   background: var(--green);
 }
 
-.day-bar:nth-child(3n) {
+.month-bar:nth-child(3n) {
   background: var(--coral);
 }
 
-.day-bar:nth-child(4n) {
+.month-bar:nth-child(4n) {
   background: var(--gold);
 }
 
-.day-bar span {
+.month-bar span {
   position: absolute;
   left: 50%;
   bottom: -28px;
@@ -515,6 +524,45 @@ td {
   color: var(--green-strong);
   font-size: 0.82rem;
   font-weight: 750;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.table-action:hover {
+  border-color: var(--green);
+  color: var(--green-strong);
+}
+
+.table-action.danger:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.table-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.table-action svg {
+  width: 17px;
+  height: 17px;
 }
 
 .empty-state {

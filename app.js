@@ -2,7 +2,7 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ6JUiLN7Xll5G9
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
 // Pega aca la URL /exec de la implementacion web de Apps Script.
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJesbBhDhsamI0VZlGh9wd2UfeRgjIvZzTudlHUPC4s8BLedJ5u8cF35m_aLRNiJOa/exec";
-const REQUIRED_SCRIPT_VERSION = 2;
+const REQUIRED_SCRIPT_VERSION = 3;
 const FALLBACK_SHEET_NAMES = ["Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero 26", "Febrero 26", "Marzo 26", "Abril 26", "Mayo 26", "Junio 26", "Julio 26"];
 const FALLBACK_SHEETS = FALLBACK_SHEET_NAMES.map((name) => ({
   name,
@@ -13,8 +13,9 @@ const state = {
   rows: [],
   meta: {},
   source: "csv",
-  backendVersion: getApiUrl() ? REQUIRED_SCRIPT_VERSION : 0,
+  backendVersion: 0,
   activeView: "entry",
+  editingRow: null,
   filters: {
     month: "all",
     category: "all",
@@ -48,9 +49,9 @@ function cacheElements() {
     "cashTotal",
     "transferTotal",
     "categoryTotal",
-    "dailyTotal",
+    "monthlyTotal",
     "categoryChart",
-    "dailyChart",
+    "monthlyChart",
     "visibleRows",
     "rowsTable",
     "entryForm",
@@ -63,6 +64,7 @@ function cacheElements() {
     "entryNotes",
     "categoryOptions",
     "saveEntryButton",
+    "cancelEditButton",
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
@@ -77,6 +79,8 @@ function bindEvents() {
 
   els.refreshButton.addEventListener("click", loadData);
   els.entryForm.addEventListener("submit", handleEntrySubmit);
+  els.cancelEditButton.addEventListener("click", resetEntryForm);
+  els.rowsTable.addEventListener("click", handleRowAction);
   els.menuButtons.forEach((button) => {
     button.addEventListener("click", () => setActiveView(button.dataset.viewTarget));
   });
@@ -147,22 +151,116 @@ function handleEntrySubmit(event) {
     return;
   }
 
+  if (state.backendVersion < REQUIRED_SCRIPT_VERSION) {
+    els.entryStatus.textContent = "Actualiza Apps Script para guardar";
+    updateEntryUi();
+    return;
+  }
+
   const formData = new FormData(els.entryForm);
-  formData.set("action", "append");
+  formData.set("action", state.editingRow ? "update" : "append");
   formData.set("amount", String(parseMoney(formData.get("amount"))));
 
+  if (state.editingRow) {
+    formData.set("sheetName", state.editingRow.sourceSheet);
+    formData.set("rowNumber", String(state.editingRow.rowNumber));
+  }
+
   submitToHiddenFrame(apiUrl, formData);
-  els.entryStatus.textContent = "Enviando a Google Sheets...";
+  els.entryStatus.textContent = state.editingRow ? "Actualizando registro..." : "Enviando a Google Sheets...";
   els.saveEntryButton.disabled = true;
 
   window.setTimeout(() => {
-    els.entryForm.reset();
-    els.entryDate.value = todayInputValue();
-    els.entryMethod.value = "Transferencia";
-    els.entryStatus.textContent = "Registro enviado";
-    updateEntryUi();
+    const wasEditing = Boolean(state.editingRow);
+    resetEntryForm();
+    els.entryStatus.textContent = wasEditing ? "Registro actualizado" : "Registro enviado";
     loadData();
   }, 1600);
+}
+
+function resetEntryForm() {
+  state.editingRow = null;
+  els.entryForm.reset();
+  els.entryDate.value = todayInputValue();
+  els.entryMethod.value = "Transferencia";
+  els.saveEntryButton.innerHTML = `<i data-lucide="save"></i> Guardar en la hoja`;
+  els.cancelEditButton.classList.remove("visible");
+  updateEntryUi();
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function handleRowAction(event) {
+  const button = event.target.closest("[data-row-action]");
+
+  if (!button) {
+    return;
+  }
+
+  const row = state.rows.find((item) => item.id === button.dataset.rowId);
+
+  if (!row) {
+    return;
+  }
+
+  if (button.dataset.rowAction === "edit") {
+    startEditRow(row);
+  }
+
+  if (button.dataset.rowAction === "delete") {
+    deleteRow(row);
+  }
+}
+
+function startEditRow(row) {
+  state.editingRow = row;
+  els.entryDate.value = dateToInputValue(row.dateValue) || todayInputValue();
+  els.entryCategory.value = row.category === "Sin categoria" ? "" : row.category;
+  els.entryDescription.value = row.description === "Sin descripcion" ? "" : row.description;
+  els.entryAmount.value = row.amount || "";
+  els.entryMethod.value = row.method === "Sin metodo" ? "Transferencia" : row.method;
+  els.entryNotes.value = row.notes || "";
+  els.entryStatus.textContent = `Editando ${row.sourceSheet}`;
+  els.saveEntryButton.innerHTML = `<i data-lucide="save"></i> Actualizar registro`;
+  els.cancelEditButton.classList.add("visible");
+  setActiveView("entry");
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function deleteRow(row) {
+  const apiUrl = getApiUrl();
+
+  if (!apiUrl) {
+    els.entryStatus.textContent = "Falta pegar la URL /exec en app.js";
+    return;
+  }
+
+  if (state.backendVersion < REQUIRED_SCRIPT_VERSION) {
+    setStatus("error", "Actualiza Apps Script para borrar registros.");
+    return;
+  }
+
+  const confirmed = window.confirm(`Borrar ${row.description} de ${row.sourceSheet}?`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  const formData = new FormData();
+  formData.set("action", "delete");
+  formData.set("sheetName", row.sourceSheet);
+  formData.set("rowNumber", String(row.rowNumber));
+  submitToHiddenFrame(apiUrl, formData);
+  setStatus("loading", "Borrando registro...");
+
+  window.setTimeout(() => {
+    loadData();
+  }, 1200);
 }
 
 function submitToHiddenFrame(url, formData) {
@@ -231,14 +329,13 @@ async function verifyBackendVersion(loadId) {
       return;
     }
 
-    if (data.ok && data.version) {
-      state.backendVersion = Number(data.version || 0);
-    }
+    state.backendVersion = data.ok && data.version ? Number(data.version || 0) : 0;
     updateEntryUi();
   } catch (error) {
     console.warn(error);
 
     if (loadId === activeLoadId) {
+      state.backendVersion = 0;
       updateEntryUi();
     }
   }
@@ -346,7 +443,7 @@ function parseSheetMatrix(matrix, sourceSheet = "") {
   const columnMap = getColumnMap(matrix[headerIndex]);
   const rows = matrix
     .slice(headerIndex + 1)
-    .map((row, index) => normalizeDataRow(row, index, sourceSheet, columnMap))
+    .map((row, index) => normalizeDataRow(row, index, sourceSheet, columnMap, headerIndex + 2 + index))
     .filter(Boolean);
 
   return { rows, meta };
@@ -402,7 +499,7 @@ function findColumn(row, term, fallback) {
   return index >= 0 ? index : fallback;
 }
 
-function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}) {
+function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumber = 0) {
   const rawDate = clean(row[columnMap.date ?? 0]);
   const category = titleCase(clean(row[columnMap.category ?? 1]));
   const description = clean(row[columnMap.description ?? 2]);
@@ -417,8 +514,9 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}) {
   const parsedDate = parseSheetDate(rawDate, sourceSheet);
 
   return {
-    id: `${rawDate}-${category}-${description}-${amount}-${index}`,
+    id: `${sourceSheet}-${rowNumber}-${rawDate}-${category}-${description}-${amount}-${index}`,
     sourceSheet: sourceSheet || "Hoja",
+    rowNumber,
     rawDate,
     dateValue: parsedDate || new Date(0),
     monthKey: parsedDate ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}` : "sin-fecha",
@@ -463,7 +561,7 @@ function render() {
   const filtered = getFilteredRows();
   renderKpis(filtered);
   renderCategoryChart(filtered);
-  renderDailyChart(filtered);
+  renderMonthlyChart(filtered);
   renderTable(filtered);
 }
 
@@ -512,26 +610,28 @@ function renderCategoryChart(rows) {
     : `<div class="empty-state">No hay movimientos para estos filtros.</div>`;
 }
 
-function renderDailyChart(rows) {
-  const totals = groupDailyTotals(rows.filter((row) => row.amount > 0));
+function renderMonthlyChart(rows) {
+  const totals = groupMonthlyTotals(rows.filter((row) => row.amount > 0));
   const max = Math.max(...totals.map((item) => item.total), 1);
 
-  els.dailyTotal.textContent = `${totals.length} dias`;
-  els.dailyChart.innerHTML = totals.length
+  els.monthlyTotal.textContent = `${totals.length} meses`;
+  els.monthlyChart.innerHTML = totals.length
     ? totals
         .map((item) => {
           const height = Math.max((item.total / max) * 100, 6);
-          return `<div class="day-bar" style="height:${height}%" title="${escapeHtml(item.label)} - ${formatMoney(item.total)}"><span>${escapeHtml(item.label)}</span></div>`;
+          return `<div class="month-bar" style="height:${height}%" title="${escapeHtml(item.label)} - ${formatMoney(item.total)}"><span>${escapeHtml(item.label)}</span></div>`;
         })
         .join("")
-    : `<div class="empty-state">Sin datos diarios.</div>`;
+    : `<div class="empty-state">Sin datos mensuales.</div>`;
 }
 
 function renderTable(rows) {
   els.visibleRows.textContent = `${rows.length.toLocaleString("es-AR")} registros`;
+  const actionsDisabled = state.backendVersion < REQUIRED_SCRIPT_VERSION ? "disabled" : "";
+  const actionsTitle = actionsDisabled ? "Actualiza Apps Script" : "";
 
   if (!rows.length) {
-    els.rowsTable.innerHTML = `<tr><td colspan="7" class="empty-state">No hay registros para mostrar.</td></tr>`;
+    els.rowsTable.innerHTML = `<tr><td colspan="8" class="empty-state">No hay registros para mostrar.</td></tr>`;
     return;
   }
 
@@ -546,10 +646,24 @@ function renderTable(rows) {
           <td>${escapeHtml(row.method)}</td>
           <td class="amount-cell">${row.amount ? formatMoney(row.amount) : "-"}</td>
           <td>${escapeHtml(row.notes || "-")}</td>
+          <td>
+            <span class="row-actions">
+              <button class="table-action" type="button" data-row-action="edit" data-row-id="${escapeHtml(row.id)}" aria-label="Editar registro" title="${actionsTitle || "Editar"}" ${actionsDisabled}>
+                <i data-lucide="pencil"></i>
+              </button>
+              <button class="table-action danger" type="button" data-row-action="delete" data-row-id="${escapeHtml(row.id)}" aria-label="Borrar registro" title="${actionsTitle || "Borrar"}" ${actionsDisabled}>
+                <i data-lucide="trash-2"></i>
+              </button>
+            </span>
+          </td>
         </tr>
       `,
     )
     .join("");
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 }
 
 function renderSheetMeta() {
@@ -729,6 +843,20 @@ function groupDailyTotals(rows) {
   return [...map.values()].sort((a, b) => a.sort.localeCompare(b.sort));
 }
 
+function groupMonthlyTotals(rows) {
+  const map = new Map();
+
+  rows.forEach((row) => {
+    const key = row.monthKey || "sin-fecha";
+    if (!map.has(key)) {
+      map.set(key, { label: row.monthLabel || "Sin fecha", total: 0, sort: key });
+    }
+    map.get(key).total += row.amount;
+  });
+
+  return [...map.values()].sort((a, b) => a.sort.localeCompare(b.sort));
+}
+
 function fillSelect(select, options, selectedValue) {
   select.innerHTML = options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("");
   select.value = options.some((option) => option.value === selectedValue) ? selectedValue : "all";
@@ -800,6 +928,17 @@ function todayInputValue() {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateToInputValue(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime()) || date.getFullYear() < 2000) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 

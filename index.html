@@ -110,6 +110,10 @@
             <i data-lucide="save"></i>
             Guardar en la hoja
           </button>
+          <button class="secondary-button hidden-control" id="cancelEditButton" type="button">
+            <i data-lucide="x"></i>
+            Cancelar edicion
+          </button>
         </form>
       </section>
 
@@ -149,10 +153,10 @@
           </div>
           <div class="panel">
             <div class="panel-heading">
-              <h2>Ingresos por dia</h2>
-              <span id="dailyTotal"></span>
+              <h2>Ingresos por mes</h2>
+              <span id="monthlyTotal"></span>
             </div>
-            <div class="daily-chart" id="dailyChart"></div>
+            <div class="monthly-chart" id="monthlyChart"></div>
           </div>
         </section>
       </section>
@@ -174,6 +178,7 @@
                   <th>Metodo</th>
                   <th class="amount-cell">Monto</th>
                   <th>Observaciones</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody id="rowsTable"></tbody>

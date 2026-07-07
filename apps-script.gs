@@ -1,5 +1,5 @@
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
-const SCRIPT_VERSION = 2;
+const SCRIPT_VERSION = 3;
 const HEADERS = ["Fecha", "Categoria", "Descripcion", "Monto (ARS)", "Metodo de pago", "", "Observaciones", "Total:", ""];
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -33,13 +33,20 @@ function doGet(event) {
 function doPost(event) {
   try {
     const params = event.parameter;
+    const action = params.action || "append";
     const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+
+    if (action === "delete") {
+      const sheet = getSheetByExactName_(spreadsheet, params.sheetName);
+      sheet.deleteRow(Number(params.rowNumber));
+      return output_({ ok: true, version: SCRIPT_VERSION, action, sheetName: sheet.getName() }, params.callback);
+    }
+
     const date = parseInputDate_(params.date);
     const sheetName = monthSheetName_(date);
-    const sheet = getOrCreateMonthSheet_(spreadsheet, sheetName, date);
+    const targetSheet = getOrCreateMonthSheet_(spreadsheet, sheetName, date);
     const amount = Number(params.amount || 0);
-
-    sheet.appendRow([
+    const values = [
       formatDate_(date),
       params.category || "",
       params.description || "",
@@ -49,15 +56,44 @@ function doPost(event) {
       params.notes || "",
       "",
       "",
-    ]);
+    ];
 
-    const row = sheet.getLastRow();
-    sheet.getRange(row, 4).setNumberFormat('"$"#,##0.00');
+    if (action === "update") {
+      const sourceSheet = getSheetByExactName_(spreadsheet, params.sheetName);
+      const sourceRow = Number(params.rowNumber);
 
-    return output_({ ok: true, version: SCRIPT_VERSION, sheetName: sheet.getName(), row }, params.callback);
+      if (sourceSheet.getName() === targetSheet.getName()) {
+        sourceSheet.getRange(sourceRow, 1, 1, values.length).setValues([values]);
+        sourceSheet.getRange(sourceRow, 4).setNumberFormat('"$"#,##0.00');
+        return output_({ ok: true, version: SCRIPT_VERSION, action, sheetName: sourceSheet.getName(), row: sourceRow }, params.callback);
+      }
+
+      targetSheet.appendRow(values);
+      const targetRow = targetSheet.getLastRow();
+      targetSheet.getRange(targetRow, 4).setNumberFormat('"$"#,##0.00');
+      sourceSheet.deleteRow(sourceRow);
+      return output_({ ok: true, version: SCRIPT_VERSION, action, sheetName: targetSheet.getName(), row: targetRow }, params.callback);
+    }
+
+    targetSheet.appendRow(values);
+
+    const row = targetSheet.getLastRow();
+    targetSheet.getRange(row, 4).setNumberFormat('"$"#,##0.00');
+
+    return output_({ ok: true, version: SCRIPT_VERSION, action, sheetName: targetSheet.getName(), row }, params.callback);
   } catch (error) {
     return output_({ ok: false, error: error.message }, event.parameter.callback);
   }
+}
+
+function getSheetByExactName_(spreadsheet, sheetName) {
+  const sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    throw new Error(`No existe la hoja ${sheetName}.`);
+  }
+
+  return sheet;
 }
 
 function getOrCreateMonthSheet_(spreadsheet, sheetName, date) {
