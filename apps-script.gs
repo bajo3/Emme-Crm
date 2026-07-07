@@ -1,6 +1,7 @@
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
-const SCRIPT_VERSION = 3;
-const HEADERS = ["Fecha", "Categoria", "Descripcion", "Monto (ARS)", "Metodo de pago", "", "Observaciones", "Total:", ""];
+const SCRIPT_VERSION = 4;
+const CALENDAR_ID = "";
+const HEADERS = ["Fecha", "Categoria", "Descripcion", "Monto (ARS)", "Metodo de pago", "", "Observaciones", "Total:", "", "Cliente", "Hora", "Duracion", "Calendar Event ID"];
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 function doGet(event) {
@@ -38,6 +39,8 @@ function doPost(event) {
 
     if (action === "delete") {
       const sheet = getSheetByExactName_(spreadsheet, params.sheetName);
+      const eventId = sheet.getRange(Number(params.rowNumber), 13).getDisplayValue();
+      deleteCalendarEvent_(eventId);
       sheet.deleteRow(Number(params.rowNumber));
       return output_({ ok: true, version: SCRIPT_VERSION, action, sheetName: sheet.getName() }, params.callback);
     }
@@ -46,6 +49,10 @@ function doPost(event) {
     const sheetName = monthSheetName_(date);
     const targetSheet = getOrCreateMonthSheet_(spreadsheet, sheetName, date);
     const amount = Number(params.amount || 0);
+    const existingEventId = action === "update"
+      ? getSheetByExactName_(spreadsheet, params.sheetName).getRange(Number(params.rowNumber), 13).getDisplayValue()
+      : "";
+    const eventId = upsertCalendarEvent_(existingEventId, date, params);
     const values = [
       formatDate_(date),
       params.category || "",
@@ -56,6 +63,10 @@ function doPost(event) {
       params.notes || "",
       "",
       "",
+      params.client || "",
+      params.time || "",
+      params.duration || "",
+      eventId || "",
     ];
 
     if (action === "update") {
@@ -113,6 +124,85 @@ function getOrCreateMonthSheet_(spreadsheet, sheetName, date) {
   return sheet;
 }
 
+function upsertCalendarEvent_(eventId, date, params) {
+  const calendar = getCalendar_();
+
+  if (!calendar || !params.time) {
+    return eventId || "";
+  }
+
+  const start = buildEventStart_(date, params.time);
+  const duration = Number(params.duration || 60);
+  const end = new Date(start.getTime() + duration * 60 * 1000);
+  const title = buildEventTitle_(params);
+  const options = {
+    description: buildEventDescription_(params),
+  };
+  const existing = eventId ? findCalendarEvent_(calendar, eventId) : null;
+
+  if (existing) {
+    existing.setTitle(title);
+    existing.setTime(start, end);
+    existing.setDescription(options.description);
+    return existing.getId();
+  }
+
+  return calendar.createEvent(title, start, end, options).getId();
+}
+
+function deleteCalendarEvent_(eventId) {
+  const calendar = getCalendar_();
+  const event = calendar && eventId ? findCalendarEvent_(calendar, eventId) : null;
+
+  if (event) {
+    event.deleteEvent();
+  }
+}
+
+function getCalendar_() {
+  if (!CALENDAR_ID) {
+    return null;
+  }
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+
+  if (!calendar) {
+    throw new Error("No se encontro el calendario configurado.");
+  }
+
+  return calendar;
+}
+
+function findCalendarEvent_(calendar, eventId) {
+  try {
+    return calendar.getEventById(eventId);
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildEventStart_(date, time) {
+  const parts = String(time || "09:00").split(":");
+  const hours = Number(parts[0] || 9);
+  const minutes = Number(parts[1] || 0);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes, 0, 0);
+}
+
+function buildEventTitle_(params) {
+  const pieces = [params.client, params.description || params.category].filter(Boolean);
+  return pieces.length ? pieces.join(" - ") : "Turno Emme";
+}
+
+function buildEventDescription_(params) {
+  return [
+    params.category ? `Categoria: ${params.category}` : "",
+    params.description ? `Descripcion: ${params.description}` : "",
+    params.method ? `Metodo: ${params.method}` : "",
+    params.amount ? `Monto: $${params.amount}` : "",
+    params.notes ? `Observaciones: ${params.notes}` : "",
+  ].filter(Boolean).join("\n");
+}
+
 function ensureHeaders_(sheet) {
   const values = sheet.getDataRange().getDisplayValues();
   const headerRow = values.findIndex((row) => normalize_(row[0]) === "fecha");
@@ -122,7 +212,10 @@ function ensureHeaders_(sheet) {
     sheet.getRange(1, 1, 1, HEADERS.length).setValues([["", "", "", "", "", "", "", "Dolar Blue:", ""]]);
     sheet.getRange(2, 1, 1, HEADERS.length).setValues([HEADERS]);
     sheet.setFrozenRows(2);
+    return;
   }
+
+  sheet.getRange(headerRow + 1, 1, 1, HEADERS.length).setValues([HEADERS]);
 }
 
 function parseInputDate_(value) {

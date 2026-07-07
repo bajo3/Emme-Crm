@@ -81,6 +81,24 @@
               <input id="entryDate" name="date" type="date" required>
             </label>
             <label>
+              Hora
+              <input id="entryTime" name="time" type="time">
+            </label>
+            <label>
+              Duracion
+              <select id="entryDuration" name="duration">
+                <option value="60">1 h</option>
+                <option value="90">1 h 30</option>
+                <option value="120">2 h</option>
+                <option value="150">2 h 30</option>
+                <option value="180">3 h</option>
+              </select>
+            </label>
+            <label>
+              Cliente
+              <input id="entryClient" name="client" placeholder="Nombre">
+            </label>
+            <label>
               Categoria
               <input id="entryCategory" name="category" list="categoryOptions" placeholder="Uñas" required>
               <datalist id="categoryOptions"></datalist>
@@ -172,6 +190,8 @@
               <thead>
                 <tr>
                   <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Cliente</th>
                   <th>Hoja</th>
                   <th>Categoria</th>
                   <th>Descripcion</th>

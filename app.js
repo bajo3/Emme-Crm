@@ -2,7 +2,7 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ6JUiLN7Xll5G9
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
 // Pega aca la URL /exec de la implementacion web de Apps Script.
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJesbBhDhsamI0VZlGh9wd2UfeRgjIvZzTudlHUPC4s8BLedJ5u8cF35m_aLRNiJOa/exec";
-const REQUIRED_SCRIPT_VERSION = 3;
+const REQUIRED_SCRIPT_VERSION = 4;
 const FALLBACK_SHEET_NAMES = ["Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero 26", "Febrero 26", "Marzo 26", "Abril 26", "Mayo 26", "Junio 26", "Julio 26"];
 const FALLBACK_SHEETS = FALLBACK_SHEET_NAMES.map((name) => ({
   name,
@@ -57,6 +57,9 @@ function cacheElements() {
     "entryForm",
     "entryStatus",
     "entryDate",
+    "entryTime",
+    "entryDuration",
+    "entryClient",
     "entryCategory",
     "entryDescription",
     "entryAmount",
@@ -182,6 +185,7 @@ function resetEntryForm() {
   state.editingRow = null;
   els.entryForm.reset();
   els.entryDate.value = todayInputValue();
+  els.entryDuration.value = "60";
   els.entryMethod.value = "Transferencia";
   els.saveEntryButton.innerHTML = `<i data-lucide="save"></i> Guardar en la hoja`;
   els.cancelEditButton.classList.remove("visible");
@@ -217,6 +221,9 @@ function handleRowAction(event) {
 function startEditRow(row) {
   state.editingRow = row;
   els.entryDate.value = dateToInputValue(row.dateValue) || todayInputValue();
+  els.entryTime.value = row.time || "";
+  els.entryDuration.value = row.duration || "60";
+  els.entryClient.value = row.client || "";
   els.entryCategory.value = row.category === "Sin categoria" ? "" : row.category;
   els.entryDescription.value = row.description === "Sin descripcion" ? "" : row.description;
   els.entryAmount.value = row.amount || "";
@@ -500,6 +507,10 @@ function getColumnMap(headerRow) {
     amount: findColumn(normalized, "monto", description + 1),
     method: findColumn(normalized, "metodo", description + 2),
     notes: findColumn(normalized, "observaciones", description + 4),
+    client: findColumn(normalized, "cliente", 9),
+    time: findColumn(normalized, "hora", 10),
+    duration: findColumn(normalized, "duracion", 11),
+    calendarEventId: findColumn(normalized, "calendar", 12),
   };
 }
 
@@ -515,6 +526,10 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
   const amount = parseMoney(row[columnMap.amount ?? 3]);
   const method = titleCase(clean(row[columnMap.method ?? 4]));
   const notes = clean(row[columnMap.notes ?? 6]);
+  const client = clean(row[columnMap.client ?? 9]);
+  const time = clean(row[columnMap.time ?? 10]);
+  const duration = clean(row[columnMap.duration ?? 11]);
+  const calendarEventId = clean(row[columnMap.calendarEventId ?? 12]);
 
   if (!rawDate && !category && !description && !amount && !method && !notes) {
     return null;
@@ -537,7 +552,11 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
     amount,
     method: method || "Sin metodo",
     notes,
-    searchable: [sourceSheet, rawDate, category, description, method, notes].join(" ").toLowerCase(),
+    client,
+    time,
+    duration,
+    calendarEventId,
+    searchable: [sourceSheet, rawDate, category, description, method, notes, client, time].join(" ").toLowerCase(),
   };
 }
 
@@ -638,7 +657,7 @@ function renderTable(rows) {
   els.visibleRows.textContent = `${rows.length.toLocaleString("es-AR")} registros`;
 
   if (!rows.length) {
-    els.rowsTable.innerHTML = `<tr><td colspan="8" class="empty-state">No hay registros para mostrar.</td></tr>`;
+    els.rowsTable.innerHTML = `<tr><td colspan="10" class="empty-state">No hay registros para mostrar.</td></tr>`;
     return;
   }
 
@@ -647,6 +666,8 @@ function renderTable(rows) {
       (row) => `
         <tr>
           <td>${escapeHtml(row.rawDate)}</td>
+          <td>${escapeHtml(row.time || "-")}</td>
+          <td>${escapeHtml(row.client || "-")}</td>
           <td>${escapeHtml(row.sourceSheet)}</td>
           <td><span class="pill">${escapeHtml(row.category)}</span></td>
           <td>${escapeHtml(row.description)}</td>
