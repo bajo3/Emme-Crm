@@ -329,14 +329,23 @@ async function verifyBackendVersion(loadId) {
       return;
     }
 
-    state.backendVersion = data.ok && data.version ? Number(data.version || 0) : 0;
+    const nextVersion = data.ok && data.version ? Number(data.version || 0) : 0;
+    const changed = state.backendVersion !== nextVersion;
+    state.backendVersion = nextVersion;
     updateEntryUi();
+    if (changed && state.rows.length) {
+      render();
+    }
   } catch (error) {
     console.warn(error);
 
     if (loadId === activeLoadId) {
+      const changed = state.backendVersion !== 0;
       state.backendVersion = 0;
       updateEntryUi();
+      if (changed && state.rows.length) {
+        render();
+      }
     }
   }
 }
@@ -627,8 +636,6 @@ function renderMonthlyChart(rows) {
 
 function renderTable(rows) {
   els.visibleRows.textContent = `${rows.length.toLocaleString("es-AR")} registros`;
-  const actionsDisabled = state.backendVersion < REQUIRED_SCRIPT_VERSION ? "disabled" : "";
-  const actionsTitle = actionsDisabled ? "Actualiza Apps Script" : "";
 
   if (!rows.length) {
     els.rowsTable.innerHTML = `<tr><td colspan="8" class="empty-state">No hay registros para mostrar.</td></tr>`;
@@ -648,10 +655,10 @@ function renderTable(rows) {
           <td>${escapeHtml(row.notes || "-")}</td>
           <td>
             <span class="row-actions">
-              <button class="table-action" type="button" data-row-action="edit" data-row-id="${escapeHtml(row.id)}" aria-label="Editar registro" title="${actionsTitle || "Editar"}" ${actionsDisabled}>
+              <button class="table-action" type="button" data-row-action="edit" data-row-id="${escapeHtml(row.id)}" aria-label="Editar registro" title="Editar">
                 <i data-lucide="pencil"></i>
               </button>
-              <button class="table-action danger" type="button" data-row-action="delete" data-row-id="${escapeHtml(row.id)}" aria-label="Borrar registro" title="${actionsTitle || "Borrar"}" ${actionsDisabled}>
+              <button class="table-action danger" type="button" data-row-action="delete" data-row-id="${escapeHtml(row.id)}" aria-label="Borrar registro" title="Borrar">
                 <i data-lucide="trash-2"></i>
               </button>
             </span>
