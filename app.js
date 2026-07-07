@@ -13,7 +13,7 @@ const state = {
   rows: [],
   meta: {},
   source: "csv",
-  backendVersion: 0,
+  backendVersion: getApiUrl() ? REQUIRED_SCRIPT_VERSION : 0,
   filters: {
     month: "all",
     category: "all",
@@ -23,6 +23,7 @@ const state = {
 };
 
 const els = {};
+let activeLoadId = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
@@ -151,21 +152,24 @@ function submitToHiddenFrame(url, formData) {
 }
 
 async function loadData() {
-  setStatus("loading", "Cargando datos desde Google Sheets...");
+  const loadId = ++activeLoadId;
+  setStatus("loading", "Cargando mes actual...");
+  verifyBackendVersion(loadId);
 
   try {
-    const apiUrl = getApiUrl();
-    const parsed = apiUrl ? await loadFromAppsScript(apiUrl) : await loadFromPublishedSheets();
+    const currentSheet = getCurrentSheet();
+    const parsed = await loadPublishedSheet(currentSheet);
 
     state.rows = parsed.rows.sort((a, b) => b.dateValue - a.dateValue);
     state.meta = parsed.meta;
-    state.source = apiUrl ? "apps-script" : "public-sheets";
+    state.source = "public-sheets-fast";
 
     buildFilterOptions();
     render();
-    setStatus("ready", `Datos actualizados: ${formatDateTime(new Date())}`);
+    setStatus("ready", `Mes actual cargado: ${formatDateTime(new Date())}`);
     renderSheetMeta();
     updateEntryUi();
+    loadRemainingSheets(loadId, currentSheet.name);
   } catch (error) {
     console.error(error);
     setStatus("error", "No se pudo cargar la planilla.");
@@ -177,21 +181,101 @@ async function loadData() {
   }
 }
 
-async function loadFromPublishedSheets() {
-  state.backendVersion = 0;
+async function verifyBackendVersion(loadId) {
+  const apiUrl = getApiUrl();
+
+  if (!apiUrl) {
+    state.backendVersion = 0;
+    updateEntryUi();
+    return;
+  }
+
+  try {
+    const data = await jsonp(apiUrl, { action: "version", cacheBust: Date.now() });
+
+    if (loadId !== activeLoadId) {
+      return;
+    }
+
+    if (data.ok && data.version) {
+      state.backendVersion = Number(data.version || 0);
+    }
+    updateEntryUi();
+  } catch (error) {
+    console.warn(error);
+
+    if (loadId === activeLoadId) {
+      updateEntryUi();
+    }
+  }
+}
+
+async function loadRemainingSheets(loadId, loadedSheetName) {
+  try {
+    const remainingSheets = FALLBACK_SHEETS.filter((sheet) => sheet.name !== loadedSheetName);
+    const parsed = await loadFromPublishedSheets(remainingSheets);
+
+    if (loadId !== activeLoadId) {
+      return;
+    }
+
+    const merged = mergeParsedSheets([parseSheetBundle(state.rows, state.meta), parsed]);
+    state.rows = merged.rows.sort((a, b) => b.dateValue - a.dateValue);
+    state.meta = merged.meta;
+
+    buildFilterOptions();
+    render();
+    setStatus("ready", `Datos completos: ${formatDateTime(new Date())}`);
+    renderSheetMeta();
+    updateEntryUi();
+  } catch (error) {
+    console.warn(error);
+    if (loadId === activeLoadId) {
+      setStatus("ready", `Mes actual cargado: ${formatDateTime(new Date())}`);
+      els.sheetMeta.textContent = "No se pudieron completar las hojas historicas.";
+    }
+  }
+}
+
+function parseSheetBundle(rows, meta) {
+  return {
+    rows: [...rows],
+    meta: {
+      sheetTotal: meta.sheetTotal || 0,
+      dolarBlue: meta.dolarBlue || 0,
+    },
+  };
+}
+
+async function loadFromPublishedSheets(sheets = FALLBACK_SHEETS) {
   const parsedSheets = await Promise.all(
-    FALLBACK_SHEETS.map(async (sheet) => {
-      const response = await fetch(`${sheet.url}&cacheBust=${Date.now()}`);
-
-      if (!response.ok) {
-        throw new Error(`Google Sheets respondio con estado ${response.status}`);
-      }
-
-      return parsePublishedSheet(await response.text(), sheet.name);
-    }),
+    sheets.map((sheet) => loadPublishedSheet(sheet)),
   );
 
   return mergeParsedSheets(parsedSheets);
+}
+
+async function loadPublishedSheet(sheet) {
+  const response = await fetch(`${sheet.url}&cacheBust=${Date.now()}`);
+
+  if (!response.ok) {
+    throw new Error(`Google Sheets respondio con estado ${response.status}`);
+  }
+
+  return parsePublishedSheet(await response.text(), sheet.name);
+}
+
+function getCurrentSheet() {
+  const name = sheetNameForDate(new Date());
+  return FALLBACK_SHEETS.find((sheet) => sheet.name === name) || FALLBACK_SHEETS[FALLBACK_SHEETS.length - 1];
+}
+
+function sheetNameForDate(date) {
+  const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+
+  return year === 2025 ? month : `${month} ${String(year).slice(-2)}`;
 }
 
 async function loadFromAppsScript(apiUrl) {

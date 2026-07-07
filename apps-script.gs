@@ -7,6 +7,10 @@ function doGet(event) {
   try {
     const action = event.parameter.action || "list";
 
+    if (action === "version") {
+      return output_({ ok: true, version: SCRIPT_VERSION }, event.parameter.callback);
+    }
+
     if (action !== "list") {
       return output_({ ok: false, error: "Accion no soportada." }, event.parameter.callback);
     }
