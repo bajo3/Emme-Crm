@@ -35,7 +35,22 @@
         <div id="sheetMeta"></div>
       </section>
 
-      <section class="filters" aria-label="Filtros">
+      <nav class="app-menu" aria-label="Menu principal">
+        <button class="menu-button active" type="button" data-view-target="entry" aria-current="page">
+          <i data-lucide="plus-circle"></i>
+          Cargar
+        </button>
+        <button class="menu-button" type="button" data-view-target="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          Dashboard
+        </button>
+        <button class="menu-button" type="button" data-view-target="movements">
+          <i data-lucide="list"></i>
+          Movimientos
+        </button>
+      </nav>
+
+      <section class="filters analytics-tools" aria-label="Filtros">
         <label>
           Mes
           <select id="monthFilter"></select>
@@ -54,7 +69,7 @@
         </label>
       </section>
 
-      <section class="entry-layout">
+      <section class="entry-layout view-section active" data-view-section="entry">
         <form class="entry-panel" id="entryForm">
           <div class="panel-heading">
             <h2>Cargar trabajo</h2>
@@ -100,67 +115,71 @@
 
       <iframe class="hidden-frame" id="writeFrame" name="writeFrame" title="Carga de datos"></iframe>
 
-      <section class="kpi-grid" aria-label="Resumen">
-        <article class="kpi">
-          <span>Ingresos</span>
-          <strong id="totalRevenue">$0</strong>
-        </article>
-        <article class="kpi">
-          <span>Trabajos</span>
-          <strong id="jobCount">0</strong>
-        </article>
-        <article class="kpi">
-          <span>Ticket promedio</span>
-          <strong id="avgTicket">$0</strong>
-        </article>
-        <article class="kpi">
-          <span>Efectivo</span>
-          <strong id="cashTotal">$0</strong>
-        </article>
-        <article class="kpi">
-          <span>Transferencia</span>
-          <strong id="transferTotal">$0</strong>
-        </article>
+      <section class="dashboard-view view-section" data-view-section="dashboard">
+        <section class="kpi-grid" aria-label="Resumen">
+          <article class="kpi">
+            <span>Ingresos</span>
+            <strong id="totalRevenue">$0</strong>
+          </article>
+          <article class="kpi">
+            <span>Trabajos</span>
+            <strong id="jobCount">0</strong>
+          </article>
+          <article class="kpi">
+            <span>Ticket promedio</span>
+            <strong id="avgTicket">$0</strong>
+          </article>
+          <article class="kpi">
+            <span>Efectivo</span>
+            <strong id="cashTotal">$0</strong>
+          </article>
+          <article class="kpi">
+            <span>Transferencia</span>
+            <strong id="transferTotal">$0</strong>
+          </article>
+        </section>
+
+        <section class="insights-layout">
+          <div class="panel">
+            <div class="panel-heading">
+              <h2>Por categoria</h2>
+              <span id="categoryTotal"></span>
+            </div>
+            <div class="bar-list" id="categoryChart"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-heading">
+              <h2>Ingresos por dia</h2>
+              <span id="dailyTotal"></span>
+            </div>
+            <div class="daily-chart" id="dailyChart"></div>
+          </div>
+        </section>
       </section>
 
-      <section class="insights-layout">
-        <div class="panel">
-          <div class="panel-heading">
-            <h2>Por categoria</h2>
-            <span id="categoryTotal"></span>
+      <section class="movements-view view-section" data-view-section="movements">
+        <section class="table-section">
+          <div class="panel-heading table-heading">
+            <h2>Movimientos</h2>
+            <span id="visibleRows"></span>
           </div>
-          <div class="bar-list" id="categoryChart"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-heading">
-            <h2>Ingresos por dia</h2>
-            <span id="dailyTotal"></span>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hoja</th>
+                  <th>Categoria</th>
+                  <th>Descripcion</th>
+                  <th>Metodo</th>
+                  <th class="amount-cell">Monto</th>
+                  <th>Observaciones</th>
+                </tr>
+              </thead>
+              <tbody id="rowsTable"></tbody>
+            </table>
           </div>
-          <div class="daily-chart" id="dailyChart"></div>
-        </div>
-      </section>
-
-      <section class="table-section">
-        <div class="panel-heading table-heading">
-          <h2>Movimientos</h2>
-          <span id="visibleRows"></span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Hoja</th>
-                <th>Categoria</th>
-                <th>Descripcion</th>
-                <th>Metodo</th>
-                <th class="amount-cell">Monto</th>
-                <th>Observaciones</th>
-              </tr>
-            </thead>
-            <tbody id="rowsTable"></tbody>
-          </table>
-        </div>
+        </section>
       </section>
     </main>
   </body>

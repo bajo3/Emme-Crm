@@ -14,6 +14,7 @@ const state = {
   meta: {},
   source: "csv",
   backendVersion: getApiUrl() ? REQUIRED_SCRIPT_VERSION : 0,
+  activeView: "entry",
   filters: {
     month: "all",
     category: "all",
@@ -65,6 +66,9 @@ function cacheElements() {
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
+  els.menuButtons = [...document.querySelectorAll("[data-view-target]")];
+  els.viewSections = [...document.querySelectorAll("[data-view-section]")];
+  els.analyticsTools = document.querySelector(".analytics-tools");
 }
 
 function bindEvents() {
@@ -73,6 +77,9 @@ function bindEvents() {
 
   els.refreshButton.addEventListener("click", loadData);
   els.entryForm.addEventListener("submit", handleEntrySubmit);
+  els.menuButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveView(button.dataset.viewTarget));
+  });
   els.monthFilter.addEventListener("change", (event) => {
     state.filters.month = event.target.value;
     render();
@@ -89,6 +96,33 @@ function bindEvents() {
     state.filters.search = event.target.value.trim().toLowerCase();
     render();
   });
+  setActiveView(state.activeView);
+}
+
+function setActiveView(view) {
+  state.activeView = view;
+
+  els.menuButtons.forEach((button) => {
+    const active = button.dataset.viewTarget === view;
+    button.classList.toggle("active", active);
+    if (active) {
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
+  });
+
+  els.viewSections.forEach((section) => {
+    section.classList.toggle("active", section.dataset.viewSection === view);
+  });
+
+  if (els.analyticsTools) {
+    els.analyticsTools.classList.toggle("active", view !== "entry");
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 }
 
 function updateEntryUi() {
