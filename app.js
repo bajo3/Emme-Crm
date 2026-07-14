@@ -2,7 +2,7 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ6JUiLN7Xll5G9
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
 // Pega aca la URL /exec de la implementacion web de Apps Script.
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJesbBhDhsamI0VZlGh9wd2UfeRgjIvZzTudlHUPC4s8BLedJ5u8cF35m_aLRNiJOa/exec";
-const REQUIRED_SCRIPT_VERSION = 4;
+const REQUIRED_SCRIPT_VERSION = 6;
 const FALLBACK_SHEET_NAMES = ["Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero 26", "Febrero 26", "Marzo 26", "Abril 26", "Mayo 26", "Junio 26", "Julio 26"];
 const FALLBACK_SHEETS = FALLBACK_SHEET_NAMES.map((name) => ({
   name,
@@ -160,6 +160,12 @@ function handleEntrySubmit(event) {
     return;
   }
 
+  if (els.saveEntryButton.disabled) {
+    return;
+  }
+
+  els.saveEntryButton.disabled = true;
+
   const formData = new FormData(els.entryForm);
   formData.set("action", state.editingRow ? "update" : "append");
   formData.set("amount", String(parseMoney(formData.get("amount"))));
@@ -167,11 +173,11 @@ function handleEntrySubmit(event) {
   if (state.editingRow) {
     formData.set("sheetName", state.editingRow.sourceSheet);
     formData.set("rowNumber", String(state.editingRow.rowNumber));
+    formData.set("rowId", state.editingRow.rowId || "");
   }
 
   submitToHiddenFrame(apiUrl, formData);
   els.entryStatus.textContent = state.editingRow ? "Actualizando registro..." : "Enviando a Google Sheets...";
-  els.saveEntryButton.disabled = true;
 
   window.setTimeout(() => {
     const wasEditing = Boolean(state.editingRow);
@@ -262,6 +268,7 @@ function deleteRow(row) {
   formData.set("action", "delete");
   formData.set("sheetName", row.sourceSheet);
   formData.set("rowNumber", String(row.rowNumber));
+  formData.set("rowId", row.rowId || "");
   submitToHiddenFrame(apiUrl, formData);
   setStatus("loading", "Borrando registro...");
 
@@ -511,6 +518,7 @@ function getColumnMap(headerRow) {
     time: findColumn(normalized, "hora", 10),
     duration: findColumn(normalized, "duracion", 11),
     calendarEventId: findColumn(normalized, "calendar", 12),
+    rowId: findColumn(normalized, "id fila", 13),
   };
 }
 
@@ -530,21 +538,23 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
   const time = clean(row[columnMap.time ?? 10]);
   const duration = clean(row[columnMap.duration ?? 11]);
   const calendarEventId = clean(row[columnMap.calendarEventId ?? 12]);
+  const rowId = clean(row[columnMap.rowId ?? 13]);
 
   if (!rawDate && !category && !description && !amount && !method && !notes) {
     return null;
   }
 
   const parsedDate = parseSheetDate(rawDate, sourceSheet);
+  const effectiveDate = parsedDate || sheetFallbackDate(sourceSheet);
 
   return {
     id: `${sourceSheet}-${rowNumber}-${rawDate}-${category}-${description}-${amount}-${index}`,
     sourceSheet: sourceSheet || "Hoja",
     rowNumber,
     rawDate,
-    dateValue: parsedDate || new Date(0),
-    monthKey: parsedDate ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}` : "sin-fecha",
-    monthLabel: parsedDate ? parsedDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" }) : "Sin fecha",
+    dateValue: parsedDate || effectiveDate || new Date(0),
+    monthKey: effectiveDate ? `${effectiveDate.getFullYear()}-${String(effectiveDate.getMonth() + 1).padStart(2, "0")}` : "sin-fecha",
+    monthLabel: effectiveDate ? effectiveDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" }) : "Sin fecha",
     dateKey: parsedDate ? parsedDate.toISOString().slice(0, 10) : rawDate,
     dayLabel: parsedDate ? parsedDate.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) : rawDate,
     category: category || "Sin categoria",
@@ -556,6 +566,7 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
     time,
     duration,
     calendarEventId,
+    rowId,
     searchable: [sourceSheet, rawDate, category, description, method, notes, client, time].join(" ").toLowerCase(),
   };
 }
@@ -665,7 +676,7 @@ function renderTable(rows) {
     .map(
       (row) => `
         <tr>
-          <td>${escapeHtml(row.rawDate)}</td>
+          <td>${escapeHtml(row.rawDate || "Sin fecha")}</td>
           <td>${escapeHtml(row.time || "-")}</td>
           <td>${escapeHtml(row.client || "-")}</td>
           <td>${escapeHtml(row.sourceSheet)}</td>
@@ -832,6 +843,20 @@ function monthNumberFromSheetName(sourceSheet) {
   const key = normalize(sourceSheet).split(" ")[0];
 
   return months[key] || 0;
+}
+
+function sheetFallbackDate(sourceSheet) {
+  const month = monthNumberFromSheetName(sourceSheet);
+
+  if (!month) {
+    return null;
+  }
+
+  const yearMatch = normalize(sourceSheet).match(/\b(\d{2,4})\b/);
+  const rawYear = yearMatch ? Number(yearMatch[1]) : 25;
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+
+  return new Date(year, month - 1, 1);
 }
 
 function parseMoney(value) {

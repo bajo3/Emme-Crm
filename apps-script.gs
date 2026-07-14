@@ -1,7 +1,7 @@
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
-const SCRIPT_VERSION = 4;
+const SCRIPT_VERSION = 6;
 const CALENDAR_ID = "";
-const HEADERS = ["Fecha", "Categoria", "Descripcion", "Monto (ARS)", "Metodo de pago", "", "Observaciones", "Total:", "", "Cliente", "Hora", "Duracion", "Calendar Event ID"];
+const HEADERS = ["Fecha", "Categoria", "Descripcion", "Monto (ARS)", "Metodo de pago", "", "Observaciones", "Total:", "", "Cliente", "Hora", "Duracion", "Calendar Event ID", "ID Fila"];
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 function doGet(event) {
@@ -39,9 +39,10 @@ function doPost(event) {
 
     if (action === "delete") {
       const sheet = getSheetByExactName_(spreadsheet, params.sheetName);
-      const eventId = sheet.getRange(Number(params.rowNumber), 13).getDisplayValue();
+      const rowNumber = resolveRowNumber_(sheet, params.rowId, params.rowNumber);
+      const eventId = sheet.getRange(rowNumber, 13).getDisplayValue();
       deleteCalendarEvent_(eventId);
-      sheet.deleteRow(Number(params.rowNumber));
+      sheet.deleteRow(rowNumber);
       return output_({ ok: true, version: SCRIPT_VERSION, action, sheetName: sheet.getName() }, params.callback);
     }
 
@@ -49,9 +50,11 @@ function doPost(event) {
     const sheetName = monthSheetName_(date);
     const targetSheet = getOrCreateMonthSheet_(spreadsheet, sheetName, date);
     const amount = Number(params.amount || 0);
-    const existingEventId = action === "update"
-      ? getSheetByExactName_(spreadsheet, params.sheetName).getRange(Number(params.rowNumber), 13).getDisplayValue()
-      : "";
+    const sourceSheetForUpdate = action === "update" ? getSheetByExactName_(spreadsheet, params.sheetName) : null;
+    const sourceRow = action === "update" ? resolveRowNumber_(sourceSheetForUpdate, params.rowId, params.rowNumber) : null;
+    const existingEventId = action === "update" ? sourceSheetForUpdate.getRange(sourceRow, 13).getDisplayValue() : "";
+    const existingRowId = action === "update" ? sourceSheetForUpdate.getRange(sourceRow, HEADERS.length).getDisplayValue() : "";
+    const rowId = existingRowId || Utilities.getUuid();
     const eventId = upsertCalendarEvent_(existingEventId, date, params);
     const values = [
       formatDate_(date),
@@ -67,11 +70,11 @@ function doPost(event) {
       params.time || "",
       params.duration || "",
       eventId || "",
+      rowId,
     ];
 
     if (action === "update") {
-      const sourceSheet = getSheetByExactName_(spreadsheet, params.sheetName);
-      const sourceRow = Number(params.rowNumber);
+      const sourceSheet = sourceSheetForUpdate;
 
       if (sourceSheet.getName() === targetSheet.getName()) {
         sourceSheet.getRange(sourceRow, 1, 1, values.length).setValues([values]);
@@ -116,12 +119,103 @@ function getOrCreateMonthSheet_(spreadsheet, sheetName, date) {
   }
 
   const sheet = spreadsheet.insertSheet(sheetName);
-  sheet.getRange(1, 1, 1, HEADERS.length).setValues([["", "", "", "", "", "", "", "Dolar Blue:", ""]]);
+  sheet.getRange(1, 1, 1, HEADERS.length).setValues([buildMetaRow_()]);
   sheet.getRange(2, 1, 1, HEADERS.length).setValues([HEADERS]);
   sheet.setFrozenRows(2);
   sheet.getRange("A2:I2").setFontWeight("bold");
   sheet.autoResizeColumns(1, HEADERS.length);
   return sheet;
+}
+
+function buildMetaRow_() {
+  const row = new Array(HEADERS.length).fill("");
+  row[7] = "Dolar Blue:";
+  return row;
+}
+
+function resolveRowNumber_(sheet, rowId, fallbackRowNumber) {
+  if (rowId) {
+    const found = findRowById_(sheet, rowId);
+
+    if (found) {
+      return found;
+    }
+
+    throw new Error("No se encontro el registro (ID no coincide). Actualiza la app e intenta de nuevo.");
+  }
+
+  return Number(fallbackRowNumber);
+}
+
+function findRowById_(sheet, rowId) {
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 3) {
+    return null;
+  }
+
+  const idColumn = HEADERS.length;
+  const values = sheet.getRange(3, idColumn, lastRow - 2, 1).getDisplayValues();
+  const index = values.findIndex((row) => row[0] === rowId);
+
+  return index === -1 ? null : index + 3;
+}
+
+// Ejecutar UNA vez desde el editor para asignar ID Fila a todas las filas existentes.
+function migrateRowIds() {
+  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const migrated = backfillRowIds_(spreadsheet);
+  Logger.log("IDs asignados: " + migrated);
+  return migrated;
+}
+
+function backfillRowIds_(spreadsheet) {
+  let count = 0;
+
+  spreadsheet.getSheets().forEach((sheet) => {
+    const data = sheet.getDataRange().getDisplayValues();
+    const headerRow = data.findIndex((row) => normalize_(row[0]) === "fecha");
+
+    if (headerRow === -1) {
+      return;
+    }
+
+    const idColumn = HEADERS.length;
+    const headerCell = sheet.getRange(headerRow + 1, idColumn);
+
+    if (!String(headerCell.getDisplayValue()).trim()) {
+      headerCell.setValue("ID Fila");
+    }
+
+    const firstDataRow = headerRow + 2;
+    const lastRow = sheet.getLastRow();
+
+    if (lastRow < firstDataRow) {
+      return;
+    }
+
+    const numRows = lastRow - firstDataRow + 1;
+    const idRange = sheet.getRange(firstDataRow, idColumn, numRows, 1);
+    const idValues = idRange.getValues();
+    const contentValues = sheet.getRange(firstDataRow, 1, numRows, 5).getDisplayValues();
+    let changed = false;
+
+    for (let i = 0; i < numRows; i += 1) {
+      const hasContent = contentValues[i].some((cell) => String(cell).trim() !== "");
+
+      if (hasContent && !String(idValues[i][0]).trim()) {
+        idValues[i][0] = Utilities.getUuid();
+        changed = true;
+        count += 1;
+      }
+    }
+
+    if (changed) {
+      idRange.setValues(idValues);
+    }
+  });
+
+  return count;
 }
 
 function upsertCalendarEvent_(eventId, date, params) {
@@ -209,7 +303,7 @@ function ensureHeaders_(sheet) {
 
   if (headerRow === -1) {
     sheet.insertRows(1, 2);
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([["", "", "", "", "", "", "", "Dolar Blue:", ""]]);
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([buildMetaRow_()]);
     sheet.getRange(2, 1, 1, HEADERS.length).setValues([HEADERS]);
     sheet.setFrozenRows(2);
     return;
