@@ -57,9 +57,7 @@ function cacheElements() {
     "entryForm",
     "entryStatus",
     "entryDate",
-    "entryTime",
     "entryDuration",
-    "entryClient",
     "entryCategory",
     "entryDescription",
     "entryAmount",
@@ -174,6 +172,8 @@ function handleEntrySubmit(event) {
     formData.set("sheetName", state.editingRow.sourceSheet);
     formData.set("rowNumber", String(state.editingRow.rowNumber));
     formData.set("rowId", state.editingRow.rowId || "");
+    formData.set("time", state.editingRow.time || "");
+    formData.set("client", state.editingRow.client || "");
   }
 
   submitToHiddenFrame(apiUrl, formData);
@@ -227,9 +227,7 @@ function handleRowAction(event) {
 function startEditRow(row) {
   state.editingRow = row;
   els.entryDate.value = dateToInputValue(row.dateValue) || todayInputValue();
-  els.entryTime.value = row.time || "";
   els.entryDuration.value = row.duration || "60";
-  els.entryClient.value = row.client || "";
   els.entryCategory.value = row.category === "Sin categoria" ? "" : row.category;
   els.entryDescription.value = row.description === "Sin descripcion" ? "" : row.description;
   els.entryAmount.value = row.amount || "";
