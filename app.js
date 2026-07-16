@@ -464,9 +464,25 @@ function parseSheetMatrix(matrix, sourceSheet = "") {
 
   const meta = parseMetaRows(matrix.slice(0, headerIndex + 1));
   const columnMap = getColumnMap(matrix[headerIndex]);
+  let lastKnownDate = null;
   const rows = matrix
     .slice(headerIndex + 1)
-    .map((row, index) => normalizeDataRow(row, index, sourceSheet, columnMap, headerIndex + 2 + index))
+    .map((row, index) => {
+      const parsedDate = parseSheetDate(row[columnMap.date ?? 0], sourceSheet);
+
+      if (parsedDate) {
+        lastKnownDate = parsedDate;
+      }
+
+      return normalizeDataRow(
+        row,
+        index,
+        sourceSheet,
+        columnMap,
+        headerIndex + 2 + index,
+        lastKnownDate,
+      );
+    })
     .filter(Boolean);
 
   return { rows, meta };
@@ -527,7 +543,7 @@ function findColumn(row, term, fallback) {
   return index >= 0 ? index : fallback;
 }
 
-function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumber = 0) {
+function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumber = 0, inheritedDate = null) {
   const rawDate = clean(row[columnMap.date ?? 0]);
   const category = titleCase(clean(row[columnMap.category ?? 1]));
   const description = clean(row[columnMap.description ?? 2]);
@@ -545,18 +561,20 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
   }
 
   const parsedDate = parseSheetDate(rawDate, sourceSheet);
-  const effectiveDate = parsedDate || sheetFallbackDate(sourceSheet);
+  const effectiveDate = parsedDate || inheritedDate || sheetFallbackDate(sourceSheet);
+  const displayDate = rawDate || formatTableDate(effectiveDate);
 
   return {
     id: `${sourceSheet}-${rowNumber}-${rawDate}-${category}-${description}-${amount}-${index}`,
     sourceSheet: sourceSheet || "Hoja",
     rowNumber,
     rawDate,
+    displayDate,
     dateValue: parsedDate || effectiveDate || new Date(0),
     monthKey: effectiveDate ? `${effectiveDate.getFullYear()}-${String(effectiveDate.getMonth() + 1).padStart(2, "0")}` : "sin-fecha",
     monthLabel: effectiveDate ? effectiveDate.toLocaleDateString("es-AR", { month: "long", year: "numeric" }) : "Sin fecha",
-    dateKey: parsedDate ? parsedDate.toISOString().slice(0, 10) : rawDate,
-    dayLabel: parsedDate ? parsedDate.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) : rawDate,
+    dateKey: effectiveDate ? dateToInputValue(effectiveDate) : rawDate,
+    dayLabel: effectiveDate ? effectiveDate.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) : rawDate,
     category: category || "Sin categoria",
     description: description || "Sin descripcion",
     amount,
@@ -676,7 +694,7 @@ function renderTable(rows) {
     .map(
       (row) => `
         <tr>
-          <td>${escapeHtml(row.rawDate || "Sin fecha")}</td>
+          <td>${escapeHtml(row.displayDate || "Sin fecha")}</td>
           <td>${escapeHtml(row.time || "-")}</td>
           <td>${escapeHtml(row.client || "-")}</td>
           <td>${escapeHtml(row.sourceSheet)}</td>
@@ -857,6 +875,18 @@ function sheetFallbackDate(sourceSheet) {
   const year = rawYear < 100 ? 2000 + rawYear : rawYear;
 
   return new Date(year, month - 1, 1);
+}
+
+function formatTableDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function parseMoney(value) {
