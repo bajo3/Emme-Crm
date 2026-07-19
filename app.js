@@ -1,12 +1,27 @@
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ6JUiLN7Xll5G9KfMi981z-N6RszRJ6tBywxV-3pK_zrhPLM_6539z16ZCxJ2SL9j6CahUyNTG-XCv/pub?output=csv";
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
 // Pega aca la URL /exec de la implementacion web de Apps Script.
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJesbBhDhsamI0VZlGh9wd2UfeRgjIvZzTudlHUPC4s8BLedJ5u8cF35m_aLRNiJOa/exec";
 const REQUIRED_SCRIPT_VERSION = 6;
-const FALLBACK_SHEET_NAMES = ["Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre", "Enero 26", "Febrero 26", "Marzo 26", "Abril 26", "Mayo 26", "Junio 26", "Julio 26"];
-const FALLBACK_SHEETS = FALLBACK_SHEET_NAMES.map((name) => ({
-  name,
-  url: `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`,
+const FALLBACK_SHEETS = [
+  { name: "Mayo 25", gid: 0 },
+  { name: "Junio 25", gid: 1218124106 },
+  { name: "Julio 25", gid: 950874680 },
+  { name: "Agosto 25", gid: 942969683 },
+  { name: "Septiembre 25", gid: 457143535 },
+  { name: "Octubre 25", gid: 1727215337 },
+  { name: "Noviembre 25", gid: 951634445 },
+  { name: "Diciembre 25", gid: 1437005094 },
+  { name: "Enero 26", gid: 2112152011 },
+  { name: "Febrero 26", gid: 1340901375 },
+  { name: "Marzo 26", gid: 830261944 },
+  { name: "Abril 26", gid: 9115085 },
+  { name: "Mayo 26", gid: 40588006 },
+  { name: "Junio 26", gid: 1337079856 },
+  { name: "Julio 26", gid: 1175686380 },
+  { name: "Agosto 26", gid: 1123368645 },
+].map((sheet) => ({
+  ...sheet,
+  url: `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${sheet.gid}`,
 }));
 
 const state = {
@@ -427,22 +442,7 @@ function sheetNameForDate(date) {
   const month = months[date.getMonth()];
   const year = date.getFullYear();
 
-  return year === 2025 ? month : `${month} ${String(year).slice(-2)}`;
-}
-
-async function loadFromAppsScript(apiUrl) {
-  const data = await jsonp(apiUrl, { action: "list", cacheBust: Date.now() });
-
-  if (!data.ok) {
-    throw new Error(data.error || "Apps Script no devolvio una respuesta valida.");
-  }
-
-  state.backendVersion = Number(data.version || 0);
-  const parsedSheets = (data.sheets || [])
-    .filter((sheet) => Array.isArray(sheet.values))
-    .map((sheet) => parseSheetMatrix(sheet.values, sheet.name));
-
-  return mergeParsedSheets(parsedSheets);
+  return `${month} ${String(year).slice(-2)}`;
 }
 
 function parsePublishedSheet(csv, sourceSheet) {
@@ -546,7 +546,7 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
   const category = titleCase(clean(row[columnMap.category ?? 1]));
   const description = clean(row[columnMap.description ?? 2]);
   const amount = parseMoney(row[columnMap.amount ?? 3]);
-  const method = titleCase(clean(row[columnMap.method ?? 4]));
+  const method = canonicalizeMethod(row[columnMap.method ?? 4]);
   const notes = clean(row[columnMap.notes ?? 6]);
   const client = clean(row[columnMap.client ?? 9]);
   const time = clean(row[columnMap.time ?? 10]);
@@ -560,7 +560,7 @@ function normalizeDataRow(row, index, sourceSheet = "", columnMap = {}, rowNumbe
 
   const parsedDate = parseSheetDate(rawDate, sourceSheet);
   const effectiveDate = parsedDate || inheritedDate || sheetFallbackDate(sourceSheet);
-  const displayDate = rawDate || formatTableDate(effectiveDate);
+  const displayDate = effectiveDate ? formatTableDate(effectiveDate) : rawDate;
 
   return {
     id: `${sourceSheet}-${rowNumber}-${rawDate}-${category}-${description}-${amount}-${index}`,
@@ -883,7 +883,7 @@ function formatTableDate(date) {
   return date.toLocaleDateString("es-AR", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    year: "2-digit",
   });
 }
 
@@ -909,19 +909,6 @@ function groupTotals(rows, field) {
   return [...map.entries()]
     .map(([label, total]) => ({ label, total }))
     .sort((a, b) => b.total - a.total);
-}
-
-function groupDailyTotals(rows) {
-  const map = new Map();
-
-  rows.forEach((row) => {
-    if (!map.has(row.dateKey)) {
-      map.set(row.dateKey, { label: row.dayLabel, total: 0, sort: row.dateKey });
-    }
-    map.get(row.dateKey).total += row.amount;
-  });
-
-  return [...map.values()].sort((a, b) => a.sort.localeCompare(b.sort));
 }
 
 function groupMonthlyTotals(rows) {
@@ -987,6 +974,28 @@ function titleCase(value) {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .replace(/(^|\s)([a-zA-Z\u00C0-\u017F])/g, (_, space, letter) => `${space}${letter.toUpperCase()}`);
+}
+
+function canonicalizeMethod(value) {
+  const normalized = normalize(value);
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.startsWith("efec")) {
+    return "Efectivo";
+  }
+
+  if (normalized.startsWith("transf")) {
+    return "Transferencia";
+  }
+
+  if (normalized.includes("tarjeta") || normalized.includes("debito")) {
+    return "Tarjeta de debito";
+  }
+
+  return titleCase(clean(value));
 }
 
 function formatMoney(value, digits = 0) {
