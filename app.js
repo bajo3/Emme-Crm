@@ -319,7 +319,7 @@ async function loadData() {
     const currentSheet = getCurrentSheet();
     const parsed = await loadPublishedSheet(currentSheet);
 
-    state.rows = parsed.rows.sort((a, b) => b.dateValue - a.dateValue);
+    state.rows = parsed.rows.sort(compareByRecency);
     state.meta = parsed.meta;
     state.source = "public-sheets-fast";
 
@@ -387,7 +387,7 @@ async function loadRemainingSheets(loadId, loadedSheetName) {
     }
 
     const merged = mergeParsedSheets([parseSheetBundle(state.rows, state.meta), parsed]);
-    state.rows = merged.rows.sort((a, b) => b.dateValue - a.dateValue);
+    state.rows = merged.rows.sort(compareByRecency);
     state.meta = merged.meta;
 
     buildFilterOptions();
@@ -873,6 +873,15 @@ function sheetFallbackDate(sourceSheet) {
   const year = rawYear < 100 ? 2000 + rawYear : rawYear;
 
   return new Date(year, month - 1, 1);
+}
+
+function compareByRecency(a, b) {
+  const byDate = b.dateValue - a.dateValue;
+  if (byDate !== 0) {
+    return byDate;
+  }
+  // Mismo dia: el ultimo servicio cargado (fila mas alta en la hoja) va primero.
+  return (b.rowNumber || 0) - (a.rowNumber || 0);
 }
 
 function formatTableDate(date) {
