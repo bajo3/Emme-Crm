@@ -1,8 +1,10 @@
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
 // Pega aca la URL /exec de la implementacion web de Apps Script.
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJesbBhDhsamI0VZlGh9wd2UfeRgjIvZzTudlHUPC4s8BLedJ5u8cF35m_aLRNiJOa/exec";
-const REQUIRED_SCRIPT_VERSION = 6;
-const FALLBACK_SHEETS = [
+const REQUIRED_SCRIPT_VERSION = 7;
+// Lista de respaldo por si Apps Script no responde al pedido de indice de hojas (action=sheets).
+// No hace falta mantenerla al dia: loadSheetIndex() la completa automaticamente con hojas nuevas.
+const STATIC_FALLBACK_SHEETS = [
   { name: "Mayo 25", gid: 0 },
   { name: "Junio 25", gid: 1218124106 },
   { name: "Julio 25", gid: 950874680 },
@@ -19,10 +21,15 @@ const FALLBACK_SHEETS = [
   { name: "Junio 26", gid: 1337079856 },
   { name: "Julio 26", gid: 1175686380 },
   { name: "Agosto 26", gid: 1123368645 },
-].map((sheet) => ({
-  ...sheet,
-  url: `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${sheet.gid}`,
-}));
+  { name: "Septiembre 26", gid: 420586929 },
+].map(toSheetSource);
+
+function toSheetSource(sheet) {
+  return {
+    ...sheet,
+    url: `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${sheet.gid}`,
+  };
+}
 
 const state = {
   rows: [],
@@ -31,6 +38,7 @@ const state = {
   backendVersion: 0,
   activeView: "entry",
   editingRow: null,
+  sheetIndex: null,
   filters: {
     month: "all",
     category: "all",
@@ -316,7 +324,8 @@ async function loadData() {
   verifyBackendVersion(loadId);
 
   try {
-    const currentSheet = getCurrentSheet();
+    const sheets = await resolveSheetIndex();
+    const currentSheet = getCurrentSheet(sheets);
     const parsed = await loadPublishedSheet(currentSheet);
 
     state.rows = parsed.rows.sort(compareByRecency);
@@ -328,7 +337,7 @@ async function loadData() {
     setStatus("ready", `Mes actual cargado: ${formatDateTime(new Date())}`);
     renderSheetMeta();
     updateEntryUi();
-    loadRemainingSheets(loadId, currentSheet.name);
+    loadRemainingSheets(loadId, currentSheet.name, sheets);
   } catch (error) {
     console.error(error);
     setStatus("error", "No se pudo cargar la planilla.");
@@ -337,6 +346,29 @@ async function loadData() {
     if (window.lucide) {
       window.lucide.createIcons();
     }
+  }
+}
+
+async function resolveSheetIndex() {
+  const apiUrl = getApiUrl();
+
+  if (!apiUrl) {
+    return STATIC_FALLBACK_SHEETS;
+  }
+
+  try {
+    const data = await jsonp(apiUrl, { action: "sheets", cacheBust: Date.now() });
+
+    if (!data.ok || !Array.isArray(data.sheets) || !data.sheets.length) {
+      throw new Error(data.error || "Respuesta de hojas invalida.");
+    }
+
+    const sheets = data.sheets.map(toSheetSource);
+    state.sheetIndex = sheets;
+    return sheets;
+  } catch (error) {
+    console.warn("No se pudo obtener el indice de hojas en vivo, usando lista de respaldo.", error);
+    return state.sheetIndex || STATIC_FALLBACK_SHEETS;
   }
 }
 
@@ -377,9 +409,9 @@ async function verifyBackendVersion(loadId) {
   }
 }
 
-async function loadRemainingSheets(loadId, loadedSheetName) {
+async function loadRemainingSheets(loadId, loadedSheetName, sheets) {
   try {
-    const remainingSheets = FALLBACK_SHEETS.filter((sheet) => sheet.name !== loadedSheetName);
+    const remainingSheets = sheets.filter((sheet) => sheet.name !== loadedSheetName);
     const parsed = await loadFromPublishedSheets(remainingSheets);
 
     if (loadId !== activeLoadId) {
@@ -414,7 +446,7 @@ function parseSheetBundle(rows, meta) {
   };
 }
 
-async function loadFromPublishedSheets(sheets = FALLBACK_SHEETS) {
+async function loadFromPublishedSheets(sheets = STATIC_FALLBACK_SHEETS) {
   const parsedSheets = await Promise.all(
     sheets.map((sheet) => loadPublishedSheet(sheet)),
   );
@@ -432,9 +464,9 @@ async function loadPublishedSheet(sheet) {
   return parsePublishedSheet(await response.text(), sheet.name);
 }
 
-function getCurrentSheet() {
+function getCurrentSheet(sheets) {
   const name = sheetNameForDate(new Date());
-  return FALLBACK_SHEETS.find((sheet) => sheet.name === name) || FALLBACK_SHEETS[FALLBACK_SHEETS.length - 1];
+  return sheets.find((sheet) => sheet.name === name) || sheets[sheets.length - 1];
 }
 
 function sheetNameForDate(date) {

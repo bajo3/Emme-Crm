@@ -1,5 +1,5 @@
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
-const SCRIPT_VERSION = 6;
+const SCRIPT_VERSION = 7;
 const CALENDAR_ID = "";
 const HEADERS = ["Fecha", "Categoria", "Descripcion", "Monto (ARS)", "Metodo de pago", "", "Observaciones", "Total:", "", "Cliente", "Hora", "Duracion", "Calendar Event ID", "ID Fila"];
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -10,6 +10,16 @@ function doGet(event) {
 
     if (action === "version") {
       return output_({ ok: true, version: SCRIPT_VERSION }, event.parameter.callback);
+    }
+
+    if (action === "sheets") {
+      const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+      const sheets = spreadsheet
+        .getSheets()
+        .filter((sheet) => !sheet.isSheetHidden())
+        .map((sheet) => ({ name: sheet.getName(), gid: sheet.getSheetId() }));
+
+      return output_({ ok: true, version: SCRIPT_VERSION, sheets }, event.parameter.callback);
     }
 
     if (action !== "list") {
