@@ -1,6 +1,6 @@
 const SPREADSHEET_ID = "1STfRTWj0oMiyo4nJu-PMfO7pxKg8r-l5m8c4bzXUGY4";
 // Pega aca la URL /exec de la implementacion web de Apps Script.
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJesbBhDhsamI0VZlGh9wd2UfeRgjIvZzTudlHUPC4s8BLedJ5u8cF35m_aLRNiJOa/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyR8zGa8bJ4hNuxBB6RmECo0ngOrHWzFTJU8hB9ZO89X1iHdz8npF_dxmWGVihbLDgCGw/exec";
 const REQUIRED_SCRIPT_VERSION = 7;
 // Lista de respaldo por si Apps Script no responde al pedido de indice de hojas (action=sheets).
 // No hace falta mantenerla al dia: loadSheetIndex() la completa automaticamente con hojas nuevas.
@@ -724,16 +724,16 @@ function renderTable(rows) {
     .map(
       (row) => `
         <tr>
-          <td>${escapeHtml(row.displayDate || "Sin fecha")}</td>
-          <td>${escapeHtml(row.time || "-")}</td>
-          <td>${escapeHtml(row.client || "-")}</td>
-          <td>${escapeHtml(row.sourceSheet)}</td>
-          <td><span class="pill">${escapeHtml(row.category)}</span></td>
-          <td>${escapeHtml(row.description)}</td>
-          <td>${escapeHtml(row.method)}</td>
-          <td class="amount-cell">${row.amount ? formatMoney(row.amount) : "-"}</td>
-          <td>${escapeHtml(row.notes || "-")}</td>
-          <td>
+          <td data-label="Fecha">${escapeHtml(row.displayDate || "Sin fecha")}</td>
+          <td data-label="Hora"${row.time ? "" : ' class="empty-cell"'}>${escapeHtml(row.time || "-")}</td>
+          <td data-label="Cliente"${row.client ? "" : ' class="empty-cell"'}>${escapeHtml(row.client || "-")}</td>
+          <td data-label="Hoja">${escapeHtml(row.sourceSheet)}</td>
+          <td data-label="Categoria"><span class="pill">${escapeHtml(row.category)}</span></td>
+          <td data-label="Descripcion">${escapeHtml(row.description)}</td>
+          <td data-label="Metodo">${escapeHtml(row.method)}</td>
+          <td class="amount-cell" data-label="Monto">${row.amount ? formatMoney(row.amount) : "-"}</td>
+          <td data-label="Observaciones"${row.notes ? "" : ' class="empty-cell"'}>${escapeHtml(row.notes || "-")}</td>
+          <td class="actions-cell">
             <span class="row-actions">
               <button class="table-action" type="button" data-row-action="edit" data-row-id="${escapeHtml(row.id)}" aria-label="Editar registro" title="Editar">
                 <i data-lucide="pencil"></i>
@@ -1087,4 +1087,10 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
 }
